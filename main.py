@@ -214,7 +214,7 @@ async def finish_order(message: types.Message, state: FSMContext):
     save_to_db(order_info)
 
     report = (
-        f"<b>STARTMIX | ЗАКАЗ #d0_{current_num}</b>\n"
+        f"<b>STARTMIX | НОВЫЙ ЗАКАЗ #d0_{current_num}</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"👤 <b>Агент:</b> {message.from_user.full_name}\n"
         f"🏢 <b>Клиент:</b> {data['company']}\n"
