@@ -3,6 +3,8 @@ import logging
 import os
 import csv
 from datetime import datetime
+from threading import Thread # Yangi qo'shildi
+from flask import Flask # Yangi qo'shildi
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -45,12 +47,26 @@ PRICES = {
     "Кафельный клей усиленный SOLIDEX 701 - 25k": 35000,
 }
 
+# --- FLASK SERVER (RENDER UCHUN) ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "STARTMIX Bot is running!"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    t = Thread(target=run_flask)
+    t.start()
+
 # --- КЛАВИАТУРЫ ---
 main_menu = ReplyKeyboardMarkup(
     keyboard=[[KeyboardButton(text="🆕 Новый заказ")]],
     resize_keyboard=True
 )
-
 
 class FullOrder(StatesGroup):
     waiting_company = State()
@@ -60,10 +76,8 @@ class FullOrder(StatesGroup):
     waiting_product = State()
     waiting_quantity = State()
 
-
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
-
 
 # --- ФУНКЦИИ ---
 def save_to_db(data):
@@ -76,23 +90,18 @@ def save_to_db(data):
         if not file_exists: writer.writeheader()
         writer.writerow(data)
 
-
 async def track_msg(message: types.Message, state: FSMContext):
     data = await state.get_data()
     msg_ids = data.get("messages_to_delete", [])
     msg_ids.append(message.message_id)
     await state.update_data(messages_to_delete=msg_ids)
 
-
 async def delete_history(state: FSMContext, chat_id: int):
     data = await state.get_data()
     for msg_id in data.get("messages_to_delete", []):
-        try:
-            await bot.delete_message(chat_id, msg_id)
-        except:
-            pass
+        try: await bot.delete_message(chat_id, msg_id)
+        except: pass
     await state.update_data(messages_to_delete=[])
-
 
 # --- ХЕНДЛЕРЫ ---
 @dp.message(Command("start"))
@@ -104,45 +113,34 @@ async def start_order(message: types.Message, state: FSMContext):
     if message.from_user.id == MY_ID:
         kb.add(KeyboardButton(text="📊 Выгрузить Excel"))
     kb.adjust(1)
-
     m = await message.answer("🚀 Введите название организации:", reply_markup=kb.as_markup(resize_keyboard=True))
-    await track_msg(message, state);
-    await track_msg(m, state)
+    await track_msg(message, state); await track_msg(m, state)
     await state.set_state(FullOrder.waiting_company)
-
 
 @dp.message(FullOrder.waiting_company)
 async def get_company(message: types.Message, state: FSMContext):
     await track_msg(message, state)
     await state.update_data(company=message.text)
     m = await message.answer("🔢 Введите ИНН (9 цифр):")
-    await track_msg(m, state);
-    await state.set_state(FullOrder.waiting_inn)
-
+    await track_msg(m, state); await state.set_state(FullOrder.waiting_inn)
 
 @dp.message(FullOrder.waiting_inn)
 async def get_inn(message: types.Message, state: FSMContext):
     await track_msg(message, state)
     if not message.text.isdigit() or len(message.text) != 9:
-        m = await message.answer("⚠️ Ошибка! Введите 9 цифр:");
-        await track_msg(m, state)
+        m = await message.answer("⚠️ Ошибка! Введите 9 цифр:"); await track_msg(m, state)
         return
     await state.update_data(inn=message.text)
-    m = await message.answer("📸 Пришлите фото паспорта:");
-    await track_msg(m, state)
+    m = await message.answer("📸 Пришлите фото паспорта:"); await track_msg(m, state)
     await state.set_state(FullOrder.waiting_passport)
-
 
 @dp.message(FullOrder.waiting_passport, F.photo)
 async def get_passport(message: types.Message, state: FSMContext):
     await track_msg(message, state)
     await state.update_data(passport_id=message.photo[-1].file_id)
-    kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📍 Отправить локацию", request_location=True)]],
-                             resize_keyboard=True)
-    m = await message.answer("📍 Отправьте локацию кнопкой:", reply_markup=kb);
-    await track_msg(m, state)
+    kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📍 Отправить локацию", request_location=True)]], resize_keyboard=True)
+    m = await message.answer("📍 Отправьте локацию кнопкой:", reply_markup=kb); await track_msg(m, state)
     await state.set_state(FullOrder.waiting_geo)
-
 
 @dp.message(FullOrder.waiting_geo, F.location)
 async def get_geo(message: types.Message, state: FSMContext):
@@ -152,25 +150,20 @@ async def get_geo(message: types.Message, state: FSMContext):
     builder = ReplyKeyboardBuilder()
     for p in PRICES.keys(): builder.add(KeyboardButton(text=p))
     builder.adjust(1)
-    m = await message.answer("📦 Выберите товар:", reply_markup=builder.as_markup(resize_keyboard=True));
-    await track_msg(m, state)
+    m = await message.answer("📦 Выберите товар:", reply_markup=builder.as_markup(resize_keyboard=True)); await track_msg(m, state)
     await state.set_state(FullOrder.waiting_product)
-
 
 @dp.message(FullOrder.waiting_product, F.text.in_(PRICES.keys()))
 async def get_product(message: types.Message, state: FSMContext):
     await track_msg(message, state)
     await state.update_data(product=message.text)
-    m = await message.answer(f"Введите количество для {message.text}:", reply_markup=main_menu);
-    await track_msg(m, state)
+    m = await message.answer(f"Введите количество для {message.text}:", reply_markup=main_menu); await track_msg(m, state)
     await state.set_state(FullOrder.waiting_quantity)
-
 
 @dp.message(FullOrder.waiting_quantity)
 async def finish_order(message: types.Message, state: FSMContext):
     if not message.text.isdigit(): return
     await track_msg(message, state)
-
     data = await state.get_data()
     quantity = int(message.text)
     total = quantity * PRICES[data['product']]
@@ -197,35 +190,31 @@ async def finish_order(message: types.Message, state: FSMContext):
         f"🔢 {quantity} шт. x {PRICES[data['product']]:,} сум\n"
         f"💰 <b>ИТОГО: {total:,} сум</b>".replace(',', ' ')
     )
-
     await delete_history(state, message.chat.id)
     await message.answer_photo(photo=data['passport_id'], caption=report, parse_mode="HTML", reply_markup=main_menu)
     try:
-        await bot.send_photo(chat_id=MY_ID, photo=data['passport_id'], caption=f"🚀 КОПИЯ ДЛЯ ОФИСА\n\n{report}",
-                             parse_mode="HTML")
-    except:
-        pass
+        await bot.send_photo(chat_id=MY_ID, photo=data['passport_id'], caption=f"🚀 КОПИЯ ДЛЯ ОФИСА\n\n{report}", parse_mode="HTML")
+    except: pass
     await state.clear()
-
 
 @dp.message(Command("export"))
 @dp.message(F.text == "📊 Выгрузить Excel")
 async def export_handler(message: types.Message):
     if message.from_user.id != MY_ID: return
     if not os.path.exists(DB_FILE):
-        await message.answer("❌ База пуста.");
-        return
-
+        await message.answer("❌ База пуста."); return
     df = pd.read_csv(DB_FILE)
     df.to_excel("report.xlsx", index=False)
     await message.answer_document(types.FSInputFile("report.xlsx"), caption="📊 Отчет STARTMIX")
     os.remove("report.xlsx")
 
-
+# --- ЗАПУСК ---
 async def main():
     logging.basicConfig(level=logging.INFO)
+    # Veb-serverni ishga tushirish
+    keep_alive()
+    # Botni ishga tushirish
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     asyncio.run(main())
