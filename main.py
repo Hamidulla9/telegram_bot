@@ -168,17 +168,17 @@ async def finish_order(message: types.Message, state: FSMContext):
     quantity = int(message.text)
     total = quantity * PRICES[data['product']]
     now_str = datetime.now(UZ_TZ).strftime("%d.%m.%Y %H:%M")
-    order_id = datetime.now(UZ_TZ).strftime("%H%M%S")
+    order_number = 0
 
     order_info = {
-        "Дата": now_str, "ID_Заказа": f"d0_{order_id}", "Агент": message.from_user.full_name,
+        "Дата": now_str, "ID_Заказа": f"d0_{order_number}", "Агент": message.from_user.full_name,
         "Организация": data['company'], "ИНН": data['inn'], "Товар": data['product'],
         "Количество": quantity, "Цена_ед": PRICES[data['product']], "Итого": total, "Локация": data['geo_url']
     }
     save_to_db(order_info)
 
     report = (
-        f"<b>STARTMIX | ЗАКАЗ #d0_{order_id}</b>\n"
+        f"<b>STARTMIX | ЗАКАЗ #d0_{order_number}</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"👤 <b>Агент:</b> {message.from_user.full_name}\n"
         f"🏢 <b>Клиент:</b> {data['company']}\n"
