@@ -40,6 +40,7 @@ PRICES = {
     "Кафельный клей усиленный  SOLIDEX 701 - 25k": 35000,
 }
 
+
 # Номер последнего заказа (будет расти во время работы бота)
 order_number = 0
 
@@ -89,7 +90,14 @@ async def delete_history(state: FSMContext, chat_id: int):
 
 # --- ОБРАБОТЧИКИ (ХЕНДЛЕРЫ) ---
 
-
+@dp.message(Command("start"))
+@dp.message(F.text == "🆕 Новый заказ")
+async def start_order(message: types.Message, state: FSMContext):
+    await state.clear()
+    m = await message.answer("🚀 Начинаем оформление заказа.\nВведите название организации:", reply_markup=main_menu)
+    await track_msg(message, state)
+    await track_msg(m, state)
+    await state.set_state(FullOrder.waiting_company)
 
 
 @dp.message(FullOrder.waiting_company)
