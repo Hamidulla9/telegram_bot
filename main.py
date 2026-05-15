@@ -3,9 +3,12 @@ import logging
 import os
 import csv
 from datetime import datetime
+from threading import Thread
 
 import pandas as pd
 import pytz
+
+from flask import Flask
 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
@@ -25,12 +28,46 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 # SETTINGS
 # =========================================
 
-TOKEN = "8989441824:AAFieZm6Lpq3q3RG5mlBxEitwitfb7KQ094"
+TOKEN = os.getenv("8989441824:AAFieZm6Lpq3q3RG5mlBxEitwitfb7KQ094")
+
 MY_ID = 8830345316
 
 DB_FILE = "orders_database.csv"
 
 UZ_TZ = pytz.timezone("Asia/Tashkent")
+
+# =========================================
+# FLASK
+# =========================================
+
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "BOT IS RUNNING"
+
+
+def run_web():
+
+    port = int(
+        os.environ.get("PORT", 10000)
+    )
+
+    app.run(
+        host="0.0.0.0",
+        port=port
+    )
+
+
+def keep_alive():
+
+    t = Thread(target=run_web)
+
+    t.start()
+
+# =========================================
+# PRODUCTS
+# =========================================
 
 PRICES = {
     "Кафельный клей усиленный StartMix - 25kg": 30000,
@@ -65,7 +102,9 @@ PRICES = {
 
 bot = Bot(token=TOKEN)
 
-dp = Dispatcher(storage=MemoryStorage())
+dp = Dispatcher(
+    storage=MemoryStorage()
+)
 
 # =========================================
 # KEYBOARDS
@@ -73,7 +112,11 @@ dp = Dispatcher(storage=MemoryStorage())
 
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="🆕 Новый заказ")]
+        [
+            KeyboardButton(
+                text="🆕 Новый заказ"
+            )
+        ]
     ],
     resize_keyboard=True
 )
@@ -83,11 +126,17 @@ main_menu = ReplyKeyboardMarkup(
 # =========================================
 
 class FullOrder(StatesGroup):
+
     waiting_company = State()
+
     waiting_inn = State()
+
     waiting_passport = State()
+
     waiting_geo = State()
+
     waiting_product = State()
+
     waiting_quantity = State()
 
 # =========================================
@@ -106,9 +155,13 @@ def get_next_order_number():
         if df.empty:
             return 1
 
-        last_id = str(df.iloc[-1]["ID_Заказа"])
+        last_id = str(
+            df.iloc[-1]["ID_Заказа"]
+        )
 
-        num = int(last_id.split("_")[-1])
+        num = int(
+            last_id.split("_")[-1]
+        )
 
         return num + 1
 
@@ -156,9 +209,14 @@ async def track_msg(message, state):
 
     data = await state.get_data()
 
-    msg_ids = data.get("messages_to_delete", [])
+    msg_ids = data.get(
+        "messages_to_delete",
+        []
+    )
 
-    msg_ids.append(message.message_id)
+    msg_ids.append(
+        message.message_id
+    )
 
     await state.update_data(
         messages_to_delete=msg_ids
@@ -169,10 +227,17 @@ async def delete_history(state, chat_id):
 
     data = await state.get_data()
 
-    for msg_id in data.get("messages_to_delete", []):
+    for msg_id in data.get(
+        "messages_to_delete",
+        []
+    ):
 
         try:
-            await bot.delete_message(chat_id, msg_id)
+
+            await bot.delete_message(
+                chat_id,
+                msg_id
+            )
 
         except:
             pass
@@ -220,6 +285,7 @@ async def start_order(
     )
 
     await track_msg(message, state)
+
     await track_msg(m, state)
 
     await state.set_state(
@@ -457,8 +523,7 @@ async def finish_order(
     save_to_db(order_info)
 
     report = (
-        f"<b>STARTMIX | "
-        f"НОВЫЙ ЗАКАЗ "
+        f"<b>STARTMIX | НОВЫЙ ЗАКАЗ "
         f"#d0_{current_num}</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"👤 <b>Агент:</b> "
@@ -554,6 +619,8 @@ async def main():
     logging.basicConfig(
         level=logging.INFO
     )
+
+    keep_alive()
 
     await bot.delete_webhook(
         drop_pending_updates=True
