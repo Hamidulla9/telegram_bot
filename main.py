@@ -23,7 +23,7 @@ import pytz
 # НАСТРОЙКИ
 # =========================
 
-TOKEN = "YANGI_TOKEN"
+TOKEN = "8989441824:AAFieZm6Lpq3q3RG5mlBxEitwitfb7KQ094"
 MY_ID = 8830345316
 
 DB_FILE = "orders_database.csv"
