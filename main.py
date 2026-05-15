@@ -3,9 +3,7 @@ import logging
 import os
 import csv
 from datetime import datetime
-from threading import Thread
 
-from flask import Flask
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -25,7 +23,7 @@ import pytz
 # НАСТРОЙКИ
 # =========================
 
-TOKEN = "8989441824:AAFieZm6Lpq3q3RG5mlBxEitwitfb7KQ094"
+TOKEN = "YANGI_TOKEN"
 MY_ID = 8830345316
 
 DB_FILE = "orders_database.csv"
@@ -60,31 +58,6 @@ PRICES = {
 }
 
 # =========================
-# FLASK SERVER
-# =========================
-
-app = Flask(__name__)
-
-
-@app.route("/")
-def home():
-    return "STARTMIX BOT IS RUNNING"
-
-
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-
-    app.run(
-        host="0.0.0.0",
-        port=port,
-        use_reloader=False
-    )
-
-
-def keep_alive():
-    Thread(target=run_flask).start()
-
-# =========================
 # BOT
 # =========================
 
@@ -107,7 +80,6 @@ main_menu = ReplyKeyboardMarkup(
 # STATES
 # =========================
 
-
 class FullOrder(StatesGroup):
     waiting_company = State()
     waiting_inn = State()
@@ -120,13 +92,13 @@ class FullOrder(StatesGroup):
 # DATABASE
 # =========================
 
-
 def get_next_order_number():
 
     if not os.path.exists(DB_FILE):
         return 1
 
     try:
+
         df = pd.read_csv(DB_FILE)
 
         if df.empty:
@@ -178,7 +150,6 @@ def save_to_db(data):
 # DELETE MESSAGES
 # =========================
 
-
 async def track_msg(message, state):
 
     data = await state.get_data()
@@ -207,7 +178,6 @@ async def delete_history(state, chat_id):
 # =========================
 # START
 # =========================
-
 
 @dp.message(Command("start"))
 @dp.message(F.text == "🆕 Новый заказ")
@@ -238,7 +208,6 @@ async def start_order(message: types.Message, state: FSMContext):
 # COMPANY
 # =========================
 
-
 @dp.message(FullOrder.waiting_company)
 async def get_company(message: types.Message, state: FSMContext):
 
@@ -257,7 +226,6 @@ async def get_company(message: types.Message, state: FSMContext):
 # =========================
 # INN
 # =========================
-
 
 @dp.message(FullOrder.waiting_inn)
 async def get_inn(message: types.Message, state: FSMContext):
@@ -287,7 +255,6 @@ async def get_inn(message: types.Message, state: FSMContext):
 # =========================
 # PASSPORT
 # =========================
-
 
 @dp.message(FullOrder.waiting_passport, F.photo)
 async def get_passport(message: types.Message, state: FSMContext):
@@ -323,7 +290,6 @@ async def get_passport(message: types.Message, state: FSMContext):
 # GEO
 # =========================
 
-
 @dp.message(FullOrder.waiting_geo, F.location)
 async def get_geo(message: types.Message, state: FSMContext):
 
@@ -357,7 +323,6 @@ async def get_geo(message: types.Message, state: FSMContext):
 # PRODUCT
 # =========================
 
-
 @dp.message(
     FullOrder.waiting_product,
     F.text.in_(PRICES.keys())
@@ -380,7 +345,6 @@ async def get_product(message: types.Message, state: FSMContext):
 # =========================
 # FINISH
 # =========================
-
 
 @dp.message(FullOrder.waiting_quantity)
 async def finish_order(message: types.Message, state: FSMContext):
@@ -446,9 +410,7 @@ async def finish_order(message: types.Message, state: FSMContext):
         await bot.send_photo(
             chat_id=MY_ID,
             photo=data["passport_id"],
-            caption=(
-                f"🚀 КОПИЯ ДЛЯ ОФИСА\n\n{report}"
-            ),
+            caption=f"🚀 КОПИЯ ДЛЯ ОФИСА\n\n{report}",
             parse_mode="HTML"
         )
 
@@ -460,7 +422,6 @@ async def finish_order(message: types.Message, state: FSMContext):
 # =========================
 # EXPORT
 # =========================
-
 
 @dp.message(Command("export"))
 @dp.message(F.text == "📊 Выгрузить Excel")
@@ -492,17 +453,13 @@ async def export_handler(message: types.Message):
 # MAIN
 # =========================
 
-
 async def main():
 
     logging.basicConfig(level=logging.INFO)
 
-    # TELEGRAM CONFLICT FIX
     await bot.delete_webhook(
         drop_pending_updates=True
     )
-
-    keep_alive()
 
     await dp.start_polling(bot)
 
