@@ -3,15 +3,13 @@ import logging
 import os
 import threading
 from datetime import datetime
-
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from flask import Flask
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
+from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 # --- FLASK SERVER (RENDER UCHUN) ---
 app = Flask(__name__)
@@ -29,7 +27,7 @@ def run_flask():
 
 # --- BOT SOZLAMALARI ---
 TOKEN = "8989441824:AAFieZm6Lpq3q3RG5mlBxEitwitfb7KQ094"
-MY_ID = 8830345316
+MY_ID = 8830345316  # Admin ID (agar kerak bo'lsa)
 
 PRICES = {
     "Kafel yelimi StartMix (kuchaytirilgan) - 25kg": 30000,
@@ -124,12 +122,9 @@ async def get_phone(message: types.Message, state: FSMContext):
 
 @dp.message(FullOrder.waiting_passport, F.photo)
 async def get_passport(message: types.Message, state: FSMContext):
-    # Сохраняем ID фото, чтобы переслать его потом
     await state.update_data(passport_id=message.photo[-1].file_id)
-
-    # Кнопка для локации
-    kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📍 Lokatsiya yuborish", request_location=True)]],
-                             resize_keyboard=True)
+    kb = types.ReplyKeyboardMarkup(
+        keyboard=[[types.KeyboardButton(text="📍 Lokatsiya yuborish", request_location=True)]], resize_keyboard=True)
     await message.answer("📍 Obyekt lokatsiyasini tugma orqali yuboring:", reply_markup=kb)
     await state.set_state(FullOrder.waiting_geo)
 
@@ -185,56 +180,17 @@ async def finish_order(message: types.Message, state: FSMContext):
         f"━━━━━━━━━━━━━━━━━━\n"
         f"{items_text}"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"💰 <b>JAMI: {total_sum:,} so'm</b>\n"
-        f"💳 <b>Holati:</b> Kutilmoqda ⏳".replace(',', ' ')
+        f"💰 <b>JAMI: {total_sum:,} so'm</b>".replace(',', ' ')
     )
 
+    # Agentga javob
     await message.answer_photo(photo=data['passport_id'], caption=report, parse_mode="HTML", reply_markup=main_menu())
 
-    builder = InlineKeyboardBuilder()
-    builder.button(text="✅ To'langan", callback_data=f"st_paid_{order_number}")
-    builder.button(text="🔴 To'lanmagan", callback_data=f"st_unpaid_{order_number}")
-    builder.adjust(2)
-
+    # Adminga (Office) hisobot yuborish (Tugmalarsiz)
     await bot.send_photo(chat_id=MY_ID, photo=data['passport_id'], caption=f"🚀 <b>OFFICE COPY</b>\n\n{report}",
-                         parse_mode="HTML", reply_markup=builder.as_markup())
+                         parse_mode="HTML")
+
     await state.clear()
-
-
-import re
-
-# --- ADMIN STATUSINI YANGILASH ---
-@dp.callback_query(F.data.startswith("st_"))
-async def update_payment_status(callback: types.CallbackQuery):
-    status_type = callback.data.split("_")[1]
-
-    payment_status = (
-        "✅ To'langan"
-        if status_type == "paid"
-        else "🔴 To'lanmagan"
-    )
-
-    current_caption = callback.message.caption or ""
-
-    # Statusni almashtirish
-    new_caption = re.sub(
-        r"💳 <b>Holati:</b> .*",
-        f"💳 <b>Holati:</b> {payment_status}",
-        current_caption
-    )
-
-    try:
-        await callback.message.edit_caption(
-            caption=new_caption,
-            parse_mode="HTML",
-            reply_markup=callback.message.reply_markup
-        )
-
-        await callback.answer(f"Holat o'zgardi: {payment_status}")
-
-    except Exception as e:
-        print(e)
-        await callback.answer("Xatolik yuz berdi!")
 
 
 async def main():
