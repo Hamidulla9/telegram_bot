@@ -11,8 +11,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardMarkup, KeyboardButton
 
 # --- НАСТРОЙКИ ---
-TOKEN = "8989441824:AAFieZm6Lpq3q3RG5mlBxEitwitfb7KQ094"
-ADMIN_ID = 8830345316  # ВАШ ТЕЛЕГРАМ ID
+TOKEN = "ВАШ_ТОКЕН_БОТА"
+ADMIN_ID = 123456789  # ВАШ ТЕЛЕГРАМ ID
 
 DB_ORDERS = "orders.csv"
 DB_USERS = "users.csv"
