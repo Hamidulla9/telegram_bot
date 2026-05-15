@@ -1,6 +1,9 @@
 import asyncio
 import logging
+import os
+import threading
 from datetime import datetime
+from flask import Flask
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -8,9 +11,24 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 
-# --- SOZLAMALAR ---
-TOKEN = "8989441824:AAFieZm6Lpq3q3RG5mlBxEitwitfb7KQ094"
-MY_ID = 8830345316
+# --- FLASK SERVER (RENDER UCHUN SHART) ---
+app = Flask(__name__)
+
+
+@app.route('/')
+def health_check():
+    return "STARTMIX Bot is running!", 200
+
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
+
+
+# --- BOT SOZLAMALARI ---
+# Token va ID ni Render Environment Variables dan oladi, bo'lmasa pastdagini ishlatadi
+TOKEN = os.getenv("BOT_TOKEN", "8989441824:AAFieZm6Lpq3q3RG5mlBxEitwitfb7KQ094")
+MY_ID = int(os.getenv("ADMIN_ID", 8830345316))
 
 PRICES = {
     "Кафельный клей усиленный StartMix - 25kg": 30000,
@@ -39,8 +57,7 @@ PRICES = {
     "Кафельный клей усиленный SOLIDEX 701 - 25k": 35000,
 }
 
-order_number = 1
-
+order_number = 96
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
@@ -55,6 +72,7 @@ class FullOrder(StatesGroup):
     waiting_quantity = State()
 
 
+# --- KLAVIATURALAR ---
 def main_menu():
     return types.ReplyKeyboardMarkup(keyboard=[[types.KeyboardButton(text="🆕 Новый заказ")]], resize_keyboard=True)
 
@@ -68,6 +86,7 @@ def product_menu():
     return builder.as_markup(resize_keyboard=True)
 
 
+# --- HANDLERLAR ---
 @dp.message(Command("start"))
 @dp.message(F.text == "🆕 Новый заказ")
 async def start_order(message: types.Message, state: FSMContext):
@@ -87,7 +106,7 @@ async def get_company(message: types.Message, state: FSMContext):
 @dp.message(FullOrder.waiting_inn)
 async def get_inn(message: types.Message, state: FSMContext):
     if not message.text.isdigit() or len(message.text) != 9:
-        return await message.answer("⚠️ Xato! INN 9 ta raqamdan iborat bo'lishi kerak:")
+        return await message.answer("⚠️ Xato! INN 9 ta raqam bo'lishi kerak:")
     await state.update_data(inn=message.text)
     await message.answer("📞 Mijoz telefon raqamini kiriting (9 ta raqam):")
     await state.set_state(FullOrder.waiting_phone)
@@ -95,10 +114,9 @@ async def get_inn(message: types.Message, state: FSMContext):
 
 @dp.message(FullOrder.waiting_phone)
 async def get_phone(message: types.Message, state: FSMContext):
-    phone = message.text.strip()
-    if not phone.isdigit() or len(phone) != 9:
+    if not message.text.isdigit() or len(message.text) != 9:
         return await message.answer("⚠️ Telefon raqami 9 ta raqam bo'lishi kerak!")
-    await state.update_data(phone=phone)
+    await state.update_data(phone=message.text)
     await message.answer("📸 Mijoz pasporti yoki shartnoma rasmini yuboring:")
     await state.set_state(FullOrder.waiting_passport)
 
@@ -108,17 +126,13 @@ async def get_passport(message: types.Message, state: FSMContext):
     await state.update_data(passport_id=message.photo[-1].file_id)
     kb = types.ReplyKeyboardMarkup(
         keyboard=[[types.KeyboardButton(text="📍 Lokatsiya yuborish", request_location=True)]], resize_keyboard=True)
-    await message.answer("📍 Obyekt lokatsiyasini tugma orqali yuboring:", reply_markup=kb)
+    await message.answer("📍 Obyekt lokatsiyasini yuboring:", reply_markup=kb)
     await state.set_state(FullOrder.waiting_geo)
 
 
 @dp.message(FullOrder.waiting_geo, F.location)
 async def get_geo(message: types.Message, state: FSMContext):
-    # TO'G'IRLANGAN HAVOLA:
-    lat = message.location.latitude
-    lon = message.location.longitude
-    geo_url = f"https://www.google.com/maps?q={lat},{lon}"
-
+    geo_url = f"https://www.google.com/maps?q={message.location.latitude},{message.location.longitude}"
     await state.update_data(geo_url=geo_url)
     await message.answer("📦 Tovarlarni tanlang:", reply_markup=product_menu())
     await state.set_state(FullOrder.waiting_product)
@@ -190,7 +204,6 @@ async def update_payment_status(callback: types.CallbackQuery):
     current_caption = callback.message.caption
 
     if "Ҳолати:" in current_caption:
-        # To'g'ri split qilish uchun "Ҳолати:" so'zidan foydalanamiz
         base_text = current_caption.split("Ҳолати:")[0]
         new_caption = base_text + f"Ҳолати: {payment_status}"
     else:
@@ -202,9 +215,14 @@ async def update_payment_status(callback: types.CallbackQuery):
 
 
 async def main():
-    logging.basicConfig(level=logging.INFO)
+    logging.info("Bot ishga tushmoqda...")
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
+    # 1. Flaskni alohida threadda ishga tushiramiz (Render portni ko'rishi uchun)
+    threading.Thread(target=run_flask, daemon=True).start()
+
+    # 2. Botni ishga tushiramiz
+    logging.basicConfig(level=logging.INFO)
     asyncio.run(main())

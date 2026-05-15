@@ -1,5 +1,5 @@
 aiogram==3.7.0
-pandas
-openpyxl
-pytz
-flask
+pandas==2.2.2
+openpyxl==3.1.2
+pytz==2024.1
+flask==3.0.3
