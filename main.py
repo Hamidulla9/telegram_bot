@@ -3,6 +3,7 @@ import logging
 import os
 import threading
 from datetime import datetime
+import pytz  # <--- Vaqt mintaqasi bilan ishlash uchun
 from flask import Flask
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
@@ -11,23 +12,20 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
-# --- FLASK SERVER (RENDER UCHUN) ---
+# --- FLASK SERVER ---
 app = Flask(__name__)
-
 
 @app.route('/')
 def health_check():
     return "STARTMIX Bot ishlamoqda!", 200
 
-
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
-
 # --- BOT SOZLAMALARI ---
 TOKEN = "8989441824:AAFieZm6Lpq3q3RG5mlBxEitwitfb7KQ094"
-MY_ID = 8830345316  # Admin ID (agar kerak bo'lsa)
+MY_ID = 8830345316
 
 PRICES = {
     "Kafel yelimi StartMix (kuchaytirilgan) - 25kg": 30000,
@@ -56,10 +54,9 @@ PRICES = {
     "Kafel yelimi SOLIDEX 701 - 25kg": 35000,
 }
 
-order_number = 96
+order_number = 1
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
-
 
 class FullOrder(StatesGroup):
     waiting_company = State()
@@ -70,11 +67,8 @@ class FullOrder(StatesGroup):
     waiting_product = State()
     waiting_quantity = State()
 
-
-# --- KLAVIATURALAR ---
 def main_menu():
     return types.ReplyKeyboardMarkup(keyboard=[[types.KeyboardButton(text="🆕 Yangi buyurtma")]], resize_keyboard=True)
-
 
 def product_menu():
     builder = ReplyKeyboardBuilder()
@@ -83,7 +77,6 @@ def product_menu():
     builder.adjust(2)
     builder.row(types.KeyboardButton(text="✅ Yakunlash"))
     return builder.as_markup(resize_keyboard=True)
-
 
 # --- HANDLERLAR ---
 @dp.message(Command("start"))
@@ -94,13 +87,11 @@ async def start_order(message: types.Message, state: FSMContext):
     await message.answer("🚀 Buyurtma berishni boshladik.\nTashkilot nomini kiriting:", reply_markup=main_menu())
     await state.set_state(FullOrder.waiting_company)
 
-
 @dp.message(FullOrder.waiting_company)
 async def get_company(message: types.Message, state: FSMContext):
     await state.update_data(company=message.text)
     await message.answer("🔢 Tashkilot INN raqamini kiriting (9 ta raqam):")
     await state.set_state(FullOrder.waiting_inn)
-
 
 @dp.message(FullOrder.waiting_inn)
 async def get_inn(message: types.Message, state: FSMContext):
@@ -110,7 +101,6 @@ async def get_inn(message: types.Message, state: FSMContext):
     await message.answer("📞 Mijoz telefon raqamini kiriting (9 ta raqam):")
     await state.set_state(FullOrder.waiting_phone)
 
-
 @dp.message(FullOrder.waiting_phone)
 async def get_phone(message: types.Message, state: FSMContext):
     if not message.text.isdigit() or len(message.text) != 9:
@@ -119,15 +109,12 @@ async def get_phone(message: types.Message, state: FSMContext):
     await message.answer("📸 Mijoz pasporti yoki shartnoma rasmini yuboring:")
     await state.set_state(FullOrder.waiting_passport)
 
-
 @dp.message(FullOrder.waiting_passport, F.photo)
 async def get_passport(message: types.Message, state: FSMContext):
     await state.update_data(passport_id=message.photo[-1].file_id)
-    kb = types.ReplyKeyboardMarkup(
-        keyboard=[[types.KeyboardButton(text="📍 Lokatsiya yuborish", request_location=True)]], resize_keyboard=True)
+    kb = types.ReplyKeyboardMarkup(keyboard=[[types.KeyboardButton(text="📍 Lokatsiya yuborish", request_location=True)]], resize_keyboard=True)
     await message.answer("📍 Obyekt lokatsiyasini tugma orqali yuboring:", reply_markup=kb)
     await state.set_state(FullOrder.waiting_geo)
-
 
 @dp.message(FullOrder.waiting_geo, F.location)
 async def get_geo(message: types.Message, state: FSMContext):
@@ -136,13 +123,11 @@ async def get_geo(message: types.Message, state: FSMContext):
     await message.answer("📦 Tovarlarni tanlang:", reply_markup=product_menu())
     await state.set_state(FullOrder.waiting_product)
 
-
 @dp.message(FullOrder.waiting_product, F.text.in_(PRICES.keys()))
 async def get_product(message: types.Message, state: FSMContext):
     await state.update_data(current_product=message.text)
     await message.answer(f"{message.text} miqdorini kiriting:", reply_markup=types.ReplyKeyboardRemove())
     await state.set_state(FullOrder.waiting_quantity)
-
 
 @dp.message(FullOrder.waiting_quantity)
 async def get_quantity(message: types.Message, state: FSMContext):
@@ -154,11 +139,14 @@ async def get_quantity(message: types.Message, state: FSMContext):
     await message.answer("✅ Qo'shildi. Yana tovar qo'shasizmi?", reply_markup=product_menu())
     await state.set_state(FullOrder.waiting_product)
 
-
 @dp.message(FullOrder.waiting_product, F.text == "✅ Yakunlash")
 async def finish_order(message: types.Message, state: FSMContext):
     data = await state.get_data()
     if not data['basket']: return await message.answer("⚠️ Savat bo'sh!")
+
+    # --- VAQTNI TO'G'IRLASH ---
+    tashkent_tz = pytz.timezone('Asia/Tashkent')
+    current_time = datetime.now(tashkent_tz).strftime('%H:%M %d.%m.%Y')
 
     global order_number
     order_number += 1
@@ -176,26 +164,19 @@ async def finish_order(message: types.Message, state: FSMContext):
         f"🆔 <b>INN:</b> <code>{data['inn']}</code>\n"
         f"📞 <b>Tel:</b> +998{data['phone']}\n"
         f"📍 <a href='{data['geo_url']}'>Lokatsiya (Google Maps)</a>\n"
-        f"🕒 <b>Vaqt:</b> {datetime.now().strftime('%H:%M %d.%m.%Y')}\n"
+        f"🕒 <b>Vaqt:</b> {current_time}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"{items_text}"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"💰 <b>JAMI: {total_sum:,} so'm</b>".replace(',', ' ')
     )
 
-    # Agentga javob
     await message.answer_photo(photo=data['passport_id'], caption=report, parse_mode="HTML", reply_markup=main_menu())
-
-    # Adminga (Office) hisobot yuborish (Tugmalarsiz)
-    await bot.send_photo(chat_id=MY_ID, photo=data['passport_id'], caption=f"🚀 <b>OFFICE COPY</b>\n\n{report}",
-                         parse_mode="HTML")
-
+    await bot.send_photo(chat_id=MY_ID, photo=data['passport_id'], caption=f"🚀 <b>OFFICE COPY</b>\n\n{report}", parse_mode="HTML")
     await state.clear()
-
 
 async def main():
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
