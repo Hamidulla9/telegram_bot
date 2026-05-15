@@ -1,257 +1,273 @@
 import asyncio
 import logging
-import os
 import csv
-from datetime import datetime
-from threading import Thread
-from flask import Flask
+import os
+from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.utils.keyboard import ReplyKeyboardBuilder, ReplyKeyboardMarkup, KeyboardButton
-import pandas as pd
-import pytz
+from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardMarkup, KeyboardButton
 
 # --- НАСТРОЙКИ ---
-TOKEN = "8989441824:AAFQYciElk7wV-_XAr-Epg5fclvdxO6P3LY"
-MY_ID = 8830345316
-DB_FILE = "orders_database.csv"
-UZ_TZ = pytz.timezone('Asia/Tashkent')
+TOKEN = "8989441824:AAFieZm6Lpq3q3RG5mlBxEitwitfb7KQ094"
+ADMIN_ID = 8830345316  # ВАШ ТЕЛЕГРАМ ID
 
-PRICES = {
-    "Кафельный клей усиленный StartMix - 25kg": 30000,
-    "Кафельный клей усиленный StartMix - 20kg": 27000,
-    "Кафельный клей усиленный StrongHause - 25kg": 32000,
-    "Кафельный клей усиленный Güçlü - 25kg": 32000,
-    "Ротбанд - 25kg": 37000,
-    "Фуга - 1kg": 12000,
-    "Фуга - 2kg": 24000,
-    "Фуга - 5kg": 45000,
-    "Дождик 0.25 - 20kg": 44000,
-    "Дождик 0.35 - 20kg": 44000,
-    "Наливной пол - 25kg": 55000,
-    "зажим-клин 1.2": 21000,
-    "зажим-клин 1.4": 21000,
-    "ПВА 900 - 800g": 29000,
-    "грунтовка - 3L": 57000,
-    "Азилитлюкс - 0.600г": 26000,
-    "Окно очиститель - 0.600г": 20000,
-    "Шпаклёвка 01 - 20k": 40000,
-    "гидроизоляция - 4k": 365000,
-    "Эмульсия - 25l": 320000,
-    "Бетон контакт - 10k": 206000,
-    "Клей для мозаики - 25k": 78000,
-    "Кафельный клей усиленный SOLIDEX 707 - 25k": 37000,
-    "Кафельный клей усиленный SOLIDEX 701 - 25k": 35000,
+DB_ORDERS = "orders.csv"
+DB_USERS = "users.csv"
+DB_CLIENTS = "clients.csv"
+
+# Прайс-лист STARTMIX (фиксированные цены)
+PRODUCTS = {
+    "Плиточный клей Standard": 25000,
+    "Плиточный клей Premium": 45000,
+    "Наливной пол": 38000,
+    "Сатин гипс": 32000,
+    "Декоративная штукатурка": 55000
 }
-
-# --- FLASK SERVER ---
-app = Flask('')
-
-
-@app.route('/')
-def home(): return "STARTMIX Bot is running!"
-
-
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
-
-
-def keep_alive():
-    Thread(target=run_flask).start()
-
-
-# --- КЛАВИАТУРЫ ---
-main_menu = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="🆕 Новый заказ")]], resize_keyboard=True)
-
-
-class FullOrder(StatesGroup):
-    waiting_company, waiting_inn, waiting_passport = State(), State(), State()
-    waiting_geo, waiting_product, waiting_quantity = State(), State(), State()
-
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
 
-# --- ФУНКЦИИ БАЗЫ ДАННЫХ ---
-def get_next_order_number():
-    """CSV fayldan oxirgi raqamni o'qiydi va keyingisini qaytaradi"""
-    if not os.path.exists(DB_FILE):
-        return 1
-    try:
-        df = pd.read_csv(DB_FILE)
-        if df.empty:
-            return 1
-        # Oxirgi qatordagi 'ID_Заказа' ustunidan raqamni ajratib olish (d0_5 -> 5)
-        last_id = str(df.iloc[-1]['ID_Заказа'])
-        num = int(last_id.split('_')[-1])
-        return num + 1
-    except:
-        return 1
+# Состояния
+class RegState(StatesGroup): name = State(); role = State()
 
 
-def save_to_db(data):
-    file_exists = os.path.isfile(DB_FILE)
-    with open(DB_FILE, mode='a', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=[
-            "Дата", "ID_Заказа", "Агент", "Организация",
-            "ИНН", "Товар", "Количество", "Цена_ед", "Итого", "Локация"
-        ])
-        if not file_exists: writer.writeheader()
-        writer.writerow(data)
+class OrderState(StatesGroup):
+    inn = State()
+    company = State()
+    phone = State()
+    choosing_product = State()
+    entering_qty = State()
 
 
-async def track_msg(message, state):
-    data = await state.get_data()
-    msg_ids = data.get("messages_to_delete", [])
-    msg_ids.append(message.message_id)
-    await state.update_data(messages_to_delete=msg_ids)
+# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+def get_user(user_id):
+    if not os.path.exists(DB_USERS): return None
+    with open(DB_USERS, 'r', encoding='utf-8') as f:
+        for row in csv.DictReader(f):
+            if int(row['id']) == user_id and row['status'] == 'active': return row
+    return None
 
 
-async def delete_history(state, chat_id):
-    data = await state.get_data()
-    for msg_id in data.get("messages_to_delete", []):
-        try:
-            await bot.delete_message(chat_id, msg_id)
-        except:
-            pass
-    await state.update_data(messages_to_delete=[])
+def check_inn_owner(inn):
+    if not os.path.exists(DB_CLIENTS): return None
+    with open(DB_CLIENTS, 'r', encoding='utf-8') as f:
+        for row in csv.DictReader(f):
+            if row['inn'] == inn:
+                expiry = datetime.strptime(row['date'], "%Y-%m-%d") + timedelta(days=30)
+                if datetime.now() < expiry: return row['agent_name']
+    return None
 
 
-# --- ХЕНДЛЕРЫ ---
+def save_client(inn, agent_name):
+    clients = []
+    exists = False
+    if os.path.exists(DB_CLIENTS):
+        with open(DB_CLIENTS, 'r', encoding='utf-8') as f: clients = list(csv.DictReader(f))
+    for c in clients:
+        if c['inn'] == inn:
+            c['date'] = datetime.now().strftime("%Y-%m-%d");
+            c['agent_name'] = agent_name;
+            exists = True
+    if not exists: clients.append({"inn": inn, "agent_name": agent_name, "date": datetime.now().strftime("%Y-%m-%d")})
+    with open(DB_CLIENTS, 'w', newline='', encoding='utf-8') as f:
+        w = csv.DictWriter(f, fieldnames=["inn", "agent_name", "date"]);
+        w.writeheader();
+        w.writerows(clients)
+
+
+def log_order(data):
+    exists = os.path.isfile(DB_ORDERS)
+    with open(DB_ORDERS, 'a', newline='', encoding='utf-8') as f:
+        w = csv.DictWriter(f, fieldnames=["date", "id", "agent", "client", "phone", "items", "sum", "status"])
+        if not exists: w.writeheader()
+        w.writerow(data)
+
+
+# --- РЕГИСТРАЦИЯ И СТАРТ ---
 @dp.message(Command("start"))
+async def start(message: types.Message, state: FSMContext):
+    user = get_user(message.from_user.id)
+    if message.from_user.id == ADMIN_ID:
+        kb = ReplyKeyboardMarkup(keyboard=[
+            [KeyboardButton(text="📊 Отчет за сегодня"), KeyboardButton(text="📅 Итоги месяца")],
+            [KeyboardButton(text="💸 Должники"), KeyboardButton(text="👥 Управление штатом")]
+        ], resize_keyboard=True)
+        await message.answer("⭐️ Добро пожаловать, Директор STARTMIX!", reply_markup=kb)
+    elif not user:
+        await message.answer("Вы не зарегистрированы в STARTMIX. Введите ваше ФИО для заявки:")
+        await state.set_state(RegState.name)
+    else:
+        btn = "🆕 Новый заказ" if user['role'] == 'agent' else "📦 Мои доставки"
+        await message.answer(f"Приветствуем, {user['name']}!",
+                             reply_markup=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=btn)]],
+                                                              resize_keyboard=True))
+
+
+@dp.message(RegState.name)
+async def reg_name(message: types.Message, state: FSMContext):
+    await state.update_data(name=message.text)
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Агент", callback_data="role_agent")
+    kb.button(text="Водитель", callback_data="role_driver")
+    await message.answer("Выберите вашу роль:", reply_markup=kb.as_markup())
+
+
+@dp.callback_query(F.data.startswith("role_"))
+async def reg_role(callback: types.CallbackQuery, state: FSMContext):
+    role = callback.data.split("_")[1]
+    data = await state.get_data()
+    kb = InlineKeyboardBuilder()
+    kb.button(text="✅ Одобрить", callback_data=f"approve_{callback.from_user.id}_{role}_{data['name']}")
+    kb.button(text="❌ Отказать", callback_data=f"deny_{callback.from_user.id}")
+    await bot.send_message(ADMIN_ID, f"👤 <b>Новая заявка</b>\nИмя: {data['name']}\nРоль: {role}", parse_mode="HTML",
+                           reply_markup=kb.as_markup())
+    await callback.message.edit_text("Заявка отправлена директору. Ожидайте подтверждения.")
+    await state.clear()
+
+
+# --- ЛОГИКА ЗАКАЗА (МУЛЬТИ-ТОВАР + ТЕЛЕФОН) ---
 @dp.message(F.text == "🆕 Новый заказ")
 async def start_order(message: types.Message, state: FSMContext):
-    await state.clear()
-    kb = ReplyKeyboardBuilder()
-    kb.add(KeyboardButton(text="🆕 Новый заказ"))
-    if message.from_user.id == MY_ID:
-        kb.add(KeyboardButton(text="📊 Выгрузить Excel"))
-    kb.adjust(1)
-    m = await message.answer("🚀 Введите название организации:", reply_markup=kb.as_markup(resize_keyboard=True))
-    await track_msg(message, state);
-    await track_msg(m, state)
-    await state.set_state(FullOrder.waiting_company)
+    user = get_user(message.from_user.id)
+    if not user or user['role'] != 'agent': return
+    await message.answer("Введите ИНН организации (9 цифр):")
+    await state.set_state(OrderState.inn)
 
 
-@dp.message(FullOrder.waiting_company)
-async def get_company(message: types.Message, state: FSMContext):
-    await track_msg(message, state)
+@dp.message(OrderState.inn)
+async def order_inn(message: types.Message, state: FSMContext):
+    inn = message.text.strip()
+    owner = check_inn_owner(inn)
+    user = get_user(message.from_user.id)
+    if owner and owner != user['name']:
+        await message.answer(f"❌ Этот ИНН закреплен за: {owner}. Вы не можете создать заказ.")
+        await state.clear()
+        return
+    await state.update_data(inn=inn)
+    await message.answer("Введите название компании:")
+    await state.set_state(OrderState.company)
+
+
+@dp.message(OrderState.company)
+async def order_company(message: types.Message, state: FSMContext):
     await state.update_data(company=message.text)
-    m = await message.answer("🔢 Введите ИНН (9 цифр):")
-    await track_msg(m, state);
-    await state.set_state(FullOrder.waiting_inn)
+    await message.answer("📞 Введите номер телефона клиента (только 9 цифр):\nНапример: 901234567")
+    await state.set_state(OrderState.phone)
 
 
-@dp.message(FullOrder.waiting_inn)
-async def get_inn(message: types.Message, state: FSMContext):
-    await track_msg(message, state)
-    if not message.text.isdigit() or len(message.text) != 9:
-        m = await message.answer("⚠️ Ошибка! Введите 9 цифр:");
-        await track_msg(m, state)
+@dp.message(OrderState.phone)
+async def order_phone(message: types.Message, state: FSMContext):
+    digits = message.text.strip()
+    if not digits.isdigit() or len(digits) != 9:
+        await message.answer("❌ Введите ровно 9 цифр номера!")
         return
-    await state.update_data(inn=message.text)
-    m = await message.answer("📸 Пришлите фото паспорта:");
-    await track_msg(m, state)
-    await state.set_state(FullOrder.waiting_passport)
+    await state.update_data(phone="+998" + digits, cart=[])
+    await show_cart_menu(message)
 
 
-@dp.message(FullOrder.waiting_passport, F.photo)
-async def get_passport(message: types.Message, state: FSMContext):
-    await track_msg(message, state)
-    await state.update_data(passport_id=message.photo[-1].file_id)
-    kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📍 Отправить локацию", request_location=True)]],
-                             resize_keyboard=True)
-    m = await message.answer("📍 Отправьте локацию кнопкой:", reply_markup=kb);
-    await track_msg(m, state)
-    await state.set_state(FullOrder.waiting_geo)
+async def show_cart_menu(message: types.Message):
+    kb = InlineKeyboardBuilder()
+    for p in PRODUCTS: kb.button(text=f"{p} ({PRODUCTS[p]:,} сум)".replace(',', ' '), callback_data=f"add_{p}")
+    kb.button(text="✅ ОФОРМИТЬ ЗАКАЗ", callback_data="cart_finish")
+    kb.adjust(1)
+    await message.answer("📦 Добавьте товары в корзину:", reply_markup=kb.as_markup())
 
 
-@dp.message(FullOrder.waiting_geo, F.location)
-async def get_geo(message: types.Message, state: FSMContext):
-    await track_msg(message, state)
-    geo_url = f"https://www.google.com/maps?q={message.location.latitude},{message.location.longitude}"
-    await state.update_data(geo_url=geo_url)
-    builder = ReplyKeyboardBuilder()
-    for p in PRICES.keys(): builder.add(KeyboardButton(text=p))
-    builder.adjust(1)
-    m = await message.answer("📦 Выберите товар:", reply_markup=builder.as_markup(resize_keyboard=True));
-    await track_msg(m, state)
-    await state.set_state(FullOrder.waiting_product)
+@dp.callback_query(F.data.startswith("add_"))
+async def cart_add(callback: types.CallbackQuery, state: FSMContext):
+    prod = callback.data.replace("add_", "")
+    await state.update_data(cur_p=prod)
+    await callback.message.answer(f"Введите количество для {prod}:")
+    await state.set_state(OrderState.entering_qty)
 
 
-@dp.message(FullOrder.waiting_product, F.text.in_(PRICES.keys()))
-async def get_product(message: types.Message, state: FSMContext):
-    await track_msg(message, state)
-    await state.update_data(product=message.text)
-    m = await message.answer(f"Введите количество для {message.text}:", reply_markup=main_menu);
-    await track_msg(m, state)
-    await state.set_state(FullOrder.waiting_quantity)
-
-
-@dp.message(FullOrder.waiting_quantity)
-async def finish_order(message: types.Message, state: FSMContext):
+@dp.message(OrderState.entering_qty)
+async def cart_qty(message: types.Message, state: FSMContext):
     if not message.text.isdigit(): return
-    await track_msg(message, state)
-
+    qty = int(message.text)
     data = await state.get_data()
-    quantity = int(message.text)
-    total = quantity * PRICES[data['product']]
-    now_str = datetime.now(UZ_TZ).strftime("%d.%m.%Y %H:%M")
+    cart = data.get('cart', [])
+    cart.append(
+        {"item": data['cur_p'], "qty": qty, "price": PRODUCTS[data['cur_p']], "sum": qty * PRODUCTS[data['cur_p']]})
+    await state.update_data(cart=cart)
+    await show_cart_menu(message)
 
-    # YANGILANGAN QISIM: Tartib raqamini olish
-    current_num = get_next_order_number()
 
-    order_info = {
-        "Дата": now_str, "ID_Заказа": f"d0_{current_num}", "Агент": message.from_user.full_name,
-        "Организация": data['company'], "ИНН": data['inn'], "Товар": data['product'],
-        "Количество": quantity, "Цена_ед": PRICES[data['product']], "Итого": total, "Локация": data['geo_url']
-    }
-    save_to_db(order_info)
+@dp.callback_query(F.data == "cart_finish")
+async def cart_done(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    if not data.get('cart'): return
+    total = sum(i['sum'] for i in data['cart'])
+    items_str = "\n".join([f"• {i['item']}: {i['qty']} шт." for i in data['cart']])
+    save_client(data['inn'], get_user(callback.from_user.id)['name'])
 
-    report = (
-        f"<b>STARTMIX | НОВЫЙ ЗАКАЗ #d0_{current_num}</b>\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"👤 <b>Агент:</b> {message.from_user.full_name}\n"
-        f"🏢 <b>Клиент:</b> {data['company']}\n"
-        f"🆔 <b>ИНН:</b> <code>{data['inn']}</code>\n"
-        f"📍 <a href='{data['geo_url']}'>Локация</a>\n"
-        f"🕒 <b>Время:</b> {now_str}\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"📦 {data['product']}\n"
-        f"🔢 {quantity} шт. x {PRICES[data['product']]:,} сум\n"
-        f"💰 <b>ИТОГО: {total:,} сум</b>".replace(',', ' ')
-    )
-    await delete_history(state, message.chat.id)
-    await message.answer_photo(photo=data['passport_id'], caption=report, parse_mode="HTML", reply_markup=main_menu)
-    try:
-        await bot.send_photo(chat_id=MY_ID, photo=data['passport_id'], caption=f"🚀 КОПИЯ ДЛЯ ОФИСА\n\n{report}",
-                             parse_mode="HTML")
-    except:
-        pass
+    kb = InlineKeyboardBuilder()
+    kb.button(text="✅ Оплачено", callback_data=f"adm_pay_{callback.from_user.id}")
+    kb.button(text="🚛 В долг", callback_data=f"adm_debt_{callback.from_user.id}")
+    kb.button(text="❌ Отмена", callback_data="adm_cancel")
+
+    msg = (
+        f"📋 <b>НОВЫЙ ЗАКАЗ</b>\nАгент: {get_user(callback.from_user.id)['name']}\nКлиент: {data['company']}\nТел: {data['phone']}\n"
+        f"ИНН: {data['inn']}\n---\n{items_str}\n---\nИТОГО: <b>{total:,} сум</b>").replace(',', ' ')
+
+    # Сохраняем черновик в БД со статусом "WAIT"
+    log_order({"date": datetime.now().strftime("%d.%m.%Y"), "id": callback.from_user.id,
+               "agent": get_user(callback.from_user.id)['name'],
+               "client": data['company'], "phone": data['phone'], "items": items_str.replace('\n', '; '), "sum": total,
+               "status": "WAIT"})
+
+    await bot.send_message(ADMIN_ID, msg, parse_mode="HTML", reply_markup=kb.as_markup())
+    await callback.message.answer("Заказ отправлен на проверку.")
     await state.clear()
 
 
-@dp.message(Command("export"))
-@dp.message(F.text == "📊 Выгрузить Excel")
-async def export_handler(message: types.Message):
-    if message.from_user.id != MY_ID: return
-    if not os.path.exists(DB_FILE):
-        await message.answer("❌ База пуста.");
-        return
-    df = pd.read_csv(DB_FILE)
-    df.to_excel("report.xlsx", index=False)
-    await message.answer_document(types.FSInputFile("report.xlsx"), caption="📊 Отчет STARTMIX")
-    os.remove("report.xlsx")
+# --- ПОДТВЕРЖДЕНИЕ И ЧЕК ---
+@dp.callback_query(F.data.startswith("adm_pay_"))
+async def admin_pay(callback: types.CallbackQuery):
+    # Логика: находим последний заказ этого юзера и ставим "ОПЛАЧЕНО"
+    # Формируем чек
+    ticket = (f"🧾 <b>STARTMIX - ЭЛЕКТРОННЫЙ ЧЕК</b>\n--------------------------\n"
+              f"Статус: ОПЛАЧЕНО ✅\nДата: {datetime.now().strftime('%d.%m.%Y %H:%M')}\nБлагодарим за доверие!")
+    await callback.message.answer(ticket, parse_mode="HTML")
+    # Здесь также должна быть логика уведомления свободного водителя
+    await callback.answer()
+
+
+# --- ОТЧЕТЫ (2% ЗАРПЛАТА) ---
+@dp.message(F.text == "📅 Итоги месяца")
+async def report_month(message: types.Message):
+    if message.from_user.id != ADMIN_ID: return
+    prefix = datetime.now().strftime(".%m.%Y")
+    total_s = 0;
+    agents_stats = {}
+    with open(DB_ORDERS, 'r', encoding='utf-8') as f:
+        for row in csv.DictReader(f):
+            if prefix in row['date'] and row['status'] in ['ОПЛАЧЕНО', 'ДОЛГ']:
+                s = int(row['sum']);
+                total_s += s
+                agents_stats[row['agent']] = agents_stats.get(row['agent'], 0) + s
+
+    res = f"🗓 <b>ИТОГИ ЗА МЕСЯЦ</b>\nОбщие продажи: {total_s:,} сум\n---\n<b>ЗАРПЛАТЫ (2%):</b>\n".replace(',', ' ')
+    for a, s in agents_stats.items():
+        res += f"• {a}: {(s * 0.02):,} сум (от {s:,} сум)\n".replace(',', ' ')
+    await message.answer(res, parse_mode="HTML")
+
+
+# --- ВОДИТЕЛЬ И ГЕО ---
+@dp.message(F.location)
+async def handle_geo(message: types.Message):
+    user = get_user(message.from_user.id)
+    if user and user['role'] == 'driver':
+        await bot.send_message(ADMIN_ID, f"🚚 <b>ВОДИТЕЛЬ В ПУТИ: {user['name']}</b>", parse_mode="HTML")
+        await bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
 
 
 async def main():
     logging.basicConfig(level=logging.INFO)
-    keep_alive()
     await dp.start_polling(bot)
 
 
