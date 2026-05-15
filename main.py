@@ -39,7 +39,7 @@ PRICES = {
     "Кафельный клей усиленный SOLIDEX 701 - 25k": 35000,
 }
 
-order_number = 96
+order_number = 1
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
