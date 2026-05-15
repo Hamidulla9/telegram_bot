@@ -3,6 +3,8 @@ import logging
 import os
 import threading
 from datetime import datetime
+
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from flask import Flask
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
@@ -122,9 +124,12 @@ async def get_phone(message: types.Message, state: FSMContext):
 
 @dp.message(FullOrder.waiting_passport, F.photo)
 async def get_passport(message: types.Message, state: FSMContext):
+    # Сохраняем ID фото, чтобы переслать его потом
     await state.update_data(passport_id=message.photo[-1].file_id)
-    kb = types.ReplyKeyboardMarkup(
-        keyboard=[[types.KeyboardButton(text="📍 Lokatsiya yuborish", request_location=True)]], resize_keyboard=True)
+
+    # Кнопка для локации
+    kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📍 Lokatsiya yuborish", request_location=True)]],
+                             resize_keyboard=True)
     await message.answer("📍 Obyekt lokatsiyasini tugma orqali yuboring:", reply_markup=kb)
     await state.set_state(FullOrder.waiting_geo)
 
