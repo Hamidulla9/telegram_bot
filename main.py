@@ -11,51 +11,49 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 
-# --- FLASK SERVER (RENDER PORTI UCHUN) ---
+# --- FLASK SERVER (RENDER UCHUN) ---
 app = Flask(__name__)
 
 
 @app.route('/')
 def health_check():
-    return "STARTMIX Bot is live!", 200
+    return "STARTMIX Bot ishlamoqda!", 200
 
 
 def run_flask():
-    # Render avtomatik taqdim etadigan PORT ni oladi
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
 
 # --- BOT SOZLAMALARI ---
-# Token va ID ni Render Environment Variables dan olish tavsiya etiladi
 TOKEN = "8989441824:AAFieZm6Lpq3q3RG5mlBxEitwitfb7KQ094"
 MY_ID = 8830345316
 
 PRICES = {
-    "Кафельный клей усиленный StartMix - 25kg": 30000,
-    "Кафельный клей усиленный StartMix - 20kg": 27000,
-    "Кафельный клей усиленный StrongHause - 25kg": 32000,
-    "Кафельный клей усиленный Güçlü - 25kg": 32000,
-    "Ротбанд - 25kg": 37000,
-    "Фуга - 1kg": 12000,
-    "Фуга - 2kg": 24000,
-    "Фуга - 5kg": 45000,
-    "Дождик 0.25 - 20kg": 44000,
-    "Дождик 0.35 - 20kg": 44000,
-    "Наливной пол - 25kg": 55000,
-    "зажим-клин 1.2": 21000,
-    "зажим-клин 1.4": 21000,
-    "ПВА 900 - 800g": 29000,
-    "грунтовка - 3L": 57000,
-    "Азилитлюкс - 0.600г": 26000,
-    "Окно очиститель - 0.600г": 20000,
-    "Шпаклёвка 01 - 20k": 40000,
-    "гидроизоляция - 4k": 365000,
-    "Эмульсия - 25l": 320000,
-    "Бетон контакт - 10k": 206000,
-    "Клей для мозаики - 25k": 78000,
-    "Кафельный клей усиленный SOLIDEX 707 - 25k": 37000,
-    "Кафельный kley usilenniy SOLIDEX 701 - 25k": 35000,
+    "Kafel yelimi StartMix (kuchaytirilgan) - 25kg": 30000,
+    "Kafel yelimi StartMix (kuchaytirilgan) - 20kg": 27000,
+    "Kafel yelimi StrongHause - 25kg": 32000,
+    "Kafel yelimi Güçlü - 25kg": 32000,
+    "Rotband - 25kg": 37000,
+    "Fuga - 1kg": 12000,
+    "Fuga - 2kg": 24000,
+    "Fuga - 5kg": 45000,
+    "Dojdik 0.25 - 20kg": 44000,
+    "Dojdik 0.35 - 20kg": 44000,
+    "Nalivnoy pol - 25kg": 55000,
+    "Zajim-klin 1.2": 21000,
+    "Zajim-klin 1.4": 21000,
+    "PVA 900 - 800g": 29000,
+    "Gruntovka - 3L": 57000,
+    "Azilitlyuks - 0.600g": 26000,
+    "Oyna tozalagich - 0.600g": 20000,
+    "Shpaklyovka 01 - 20kg": 40000,
+    "Gidroizolyatsiya - 4kg": 365000,
+    "Emulsiya - 25l": 320000,
+    "Beton kontakt - 10kg": 206000,
+    "Mozaika yelimi - 25kg": 78000,
+    "Kafel yelimi SOLIDEX 707 - 25kg": 37000,
+    "Kafel yelimi SOLIDEX 701 - 25kg": 35000,
 }
 
 order_number = 96
@@ -75,7 +73,7 @@ class FullOrder(StatesGroup):
 
 # --- KLAVIATURALAR ---
 def main_menu():
-    return types.ReplyKeyboardMarkup(keyboard=[[types.KeyboardButton(text="🆕 Новый заказ")]], resize_keyboard=True)
+    return types.ReplyKeyboardMarkup(keyboard=[[types.KeyboardButton(text="🆕 Yangi buyurtma")]], resize_keyboard=True)
 
 
 def product_menu():
@@ -83,13 +81,13 @@ def product_menu():
     for product in PRICES.keys():
         builder.add(types.KeyboardButton(text=product))
     builder.adjust(2)
-    builder.row(types.KeyboardButton(text="✅ Yakunlash (Tugatish)"))
+    builder.row(types.KeyboardButton(text="✅ Yakunlash"))
     return builder.as_markup(resize_keyboard=True)
 
 
 # --- HANDLERLAR ---
 @dp.message(Command("start"))
-@dp.message(F.text == "🆕 Новый заказ")
+@dp.message(F.text == "🆕 Yangi buyurtma")
 async def start_order(message: types.Message, state: FSMContext):
     await state.clear()
     await state.update_data(basket=[])
@@ -127,7 +125,7 @@ async def get_passport(message: types.Message, state: FSMContext):
     await state.update_data(passport_id=message.photo[-1].file_id)
     kb = types.ReplyKeyboardMarkup(
         keyboard=[[types.KeyboardButton(text="📍 Lokatsiya yuborish", request_location=True)]], resize_keyboard=True)
-    await message.answer("📍 Obyekt lokatsiyasini yuboring:", reply_markup=kb)
+    await message.answer("📍 Obyekt lokatsiyasini tugma orqali yuboring:", reply_markup=kb)
     await state.set_state(FullOrder.waiting_geo)
 
 
@@ -157,7 +155,7 @@ async def get_quantity(message: types.Message, state: FSMContext):
     await state.set_state(FullOrder.waiting_product)
 
 
-@dp.message(FullOrder.waiting_product, F.text == "✅ Yakunlash (Tugatish)")
+@dp.message(FullOrder.waiting_product, F.text == "✅ Yakunlash")
 async def finish_order(message: types.Message, state: FSMContext):
     data = await state.get_data()
     if not data['basket']: return await message.answer("⚠️ Savat bo'sh!")
@@ -168,27 +166,26 @@ async def finish_order(message: types.Message, state: FSMContext):
     items_text = ""
     for item in data['basket']:
         total_sum += item['qty'] * item['price']
-        items_text += f"• {item['name']}\n  └ {item['qty']} шт. x {item['price']:,} = {item['qty'] * item['price']:,} сум\n"
+        items_text += f"• {item['name']}\n  └ {item['qty']} dona x {item['price']:,} = {item['qty'] * item['price']:,} so'm\n"
 
     report = (
-        f"✅ <b>Новый заказ #d0_{order_number}</b>\n"
+        f"✅ <b>Yangi buyurtma #d0_{order_number}</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"👤 <b>Агент:</b> {message.from_user.full_name}\n"
-        f"🏢 <b>Клиент:</b> {data['company']}\n"
-        f"🆔 <b>ИНН:</b> <code>{data['inn']}</code>\n"
-        f"📞 <b>Тел:</b> +998{data['phone']}\n"
+        f"👤 <b>Agent:</b> {message.from_user.full_name}\n"
+        f"🏢 <b>Mijoz:</b> {data['company']}\n"
+        f"🆔 <b>INN:</b> <code>{data['inn']}</code>\n"
+        f"📞 <b>Tel:</b> +998{data['phone']}\n"
         f"📍 <a href='{data['geo_url']}'>Lokatsiya (Google Maps)</a>\n"
         f"🕒 <b>Vaqt:</b> {datetime.now().strftime('%H:%M %d.%m.%Y')}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"{items_text}"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"💰 <b>ИТОГО: {total_sum:,} сум</b>\n"
-        f"💳 <b>Ҳолати:</b> Кутилмоқда ⏳".replace(',', ' ')
+        f"💰 <b>JAMI: {total_sum:,} so'm</b>\n"
+        f"💳 <b>Holati:</b> Kutilmoqda ⏳".replace(',', ' ')
     )
 
     await message.answer_photo(photo=data['passport_id'], caption=report, parse_mode="HTML", reply_markup=main_menu())
 
-    # Adminga yuborish
     builder = InlineKeyboardBuilder()
     builder.button(text="✅ To'langan", callback_data=f"st_paid_{order_number}")
     builder.button(text="🔴 To'lanmagan", callback_data=f"st_unpaid_{order_number}")
@@ -206,36 +203,28 @@ async def update_payment_status(callback: types.CallbackQuery):
     payment_status = "✅ To'langan" if status_type == "paid" else "🔴 To'lanmagan"
     current_caption = callback.message.caption
 
-    if "Ҳолати:" in current_caption:
-        base_text = current_caption.split("Ҳолаti:")[0]
-        # Agar "Ҳолати:" yozuvi bo'lmasa, o'shani split qiladi
-        if "Ҳолати:" in current_caption:
-            base_text = current_caption.split("Ҳолати:")[0]
-        new_caption = base_text + f"Ҳолати: {payment_status}"
+    if "Holati:" in current_caption:
+        base_text = current_caption.split("Holati:")[0]
+        new_caption = f"{base_text}Holati: {payment_status}"
     else:
-        new_caption = current_caption + f"\n💳 Ҳолати: {payment_status}"
+        new_caption = f"{current_caption}\n\n💳 Holati: {payment_status}"
 
     try:
-        # edit_caption orqali captionni yangilaymiz va tugmalarni qayta yuboramiz
         await callback.message.edit_caption(
             caption=new_caption,
             parse_mode="HTML",
-            reply_markup=callback.message.reply_markup  # Tugmalar yo'qolmaydi!
+            reply_markup=callback.message.reply_markup
         )
-        await callback.answer(f"Status: {payment_status}")
+        await callback.answer(f"Holat: {payment_status}")
     except Exception:
-        await callback.answer("Bu status allaqachon tanlangan!")
+        await callback.answer("Bu holat tanlangan!")
 
 
 async def main():
-    logging.info("Bot ishga tushmoqda...")
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
-    # 1. Flask (Health Check) parallel oqimda
     threading.Thread(target=run_flask, daemon=True).start()
-
-    # 2. Bot asosiy oqimda
     logging.basicConfig(level=logging.INFO)
     asyncio.run(main())
