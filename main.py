@@ -11,24 +11,25 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 
-# --- FLASK SERVER (RENDER UCHUN SHART) ---
+# --- FLASK SERVER (RENDER PORTI UCHUN) ---
 app = Flask(__name__)
 
 
 @app.route('/')
 def health_check():
-    return "STARTMIX Bot is running!", 200
+    return "STARTMIX Bot is live!", 200
 
 
 def run_flask():
+    # Render avtomatik taqdim etadigan PORT ni oladi
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
 
 # --- BOT SOZLAMALARI ---
-# Token va ID ni Render Environment Variables dan oladi, bo'lmasa pastdagini ishlatadi
-TOKEN = os.getenv("BOT_TOKEN", "8989441824:AAFieZm6Lpq3q3RG5mlBxEitwitfb7KQ094")
-MY_ID = int(os.getenv("ADMIN_ID", 8830345316))
+# Token va ID ni Render Environment Variables dan olish tavsiya etiladi
+TOKEN = "8989441824:AAFieZm6Lpq3q3RG5mlBxEitwitfb7KQ094"
+MY_ID = 8830345316
 
 PRICES = {
     "Кафельный клей усиленный StartMix - 25kg": 30000,
@@ -54,7 +55,7 @@ PRICES = {
     "Бетон контакт - 10k": 206000,
     "Клей для мозаики - 25k": 78000,
     "Кафельный клей усиленный SOLIDEX 707 - 25k": 37000,
-    "Кафельный клей усиленный SOLIDEX 701 - 25k": 35000,
+    "Кафельный kley usilenniy SOLIDEX 701 - 25k": 35000,
 }
 
 order_number = 96
@@ -106,7 +107,7 @@ async def get_company(message: types.Message, state: FSMContext):
 @dp.message(FullOrder.waiting_inn)
 async def get_inn(message: types.Message, state: FSMContext):
     if not message.text.isdigit() or len(message.text) != 9:
-        return await message.answer("⚠️ Xato! INN 9 ta raqam bo'lishi kerak:")
+        return await message.answer("⚠️ Xato! INN 9 ta raqamdan iborat bo'lishi kerak:")
     await state.update_data(inn=message.text)
     await message.answer("📞 Mijoz telefon raqamini kiriting (9 ta raqam):")
     await state.set_state(FullOrder.waiting_phone)
@@ -187,6 +188,7 @@ async def finish_order(message: types.Message, state: FSMContext):
 
     await message.answer_photo(photo=data['passport_id'], caption=report, parse_mode="HTML", reply_markup=main_menu())
 
+    # Adminga yuborish
     builder = InlineKeyboardBuilder()
     builder.button(text="✅ To'langan", callback_data=f"st_paid_{order_number}")
     builder.button(text="🔴 To'lanmagan", callback_data=f"st_unpaid_{order_number}")
@@ -197,6 +199,7 @@ async def finish_order(message: types.Message, state: FSMContext):
     await state.clear()
 
 
+# --- ADMIN STATUSINI YANGILASH ---
 @dp.callback_query(F.data.startswith("st_"))
 async def update_payment_status(callback: types.CallbackQuery):
     status_type = callback.data.split("_")[1]
@@ -204,14 +207,24 @@ async def update_payment_status(callback: types.CallbackQuery):
     current_caption = callback.message.caption
 
     if "Ҳолати:" in current_caption:
-        base_text = current_caption.split("Ҳолати:")[0]
+        base_text = current_caption.split("Ҳолаti:")[0]
+        # Agar "Ҳолати:" yozuvi bo'lmasa, o'shani split qiladi
+        if "Ҳолати:" in current_caption:
+            base_text = current_caption.split("Ҳолати:")[0]
         new_caption = base_text + f"Ҳолати: {payment_status}"
     else:
         new_caption = current_caption + f"\n💳 Ҳолати: {payment_status}"
 
-    await callback.message.edit_caption(caption=new_caption, parse_mode="HTML",
-                                        reply_markup=callback.message.reply_markup)
-    await callback.answer(f"Holat: {payment_status}")
+    try:
+        # edit_caption orqali captionni yangilaymiz va tugmalarni qayta yuboramiz
+        await callback.message.edit_caption(
+            caption=new_caption,
+            parse_mode="HTML",
+            reply_markup=callback.message.reply_markup  # Tugmalar yo'qolmaydi!
+        )
+        await callback.answer(f"Status: {payment_status}")
+    except Exception:
+        await callback.answer("Bu status allaqachon tanlangan!")
 
 
 async def main():
@@ -220,9 +233,9 @@ async def main():
 
 
 if __name__ == "__main__":
-    # 1. Flaskni alohida threadda ishga tushiramiz (Render portni ko'rishi uchun)
+    # 1. Flask (Health Check) parallel oqimda
     threading.Thread(target=run_flask, daemon=True).start()
 
-    # 2. Botni ishga tushiramiz
+    # 2. Bot asosiy oqimda
     logging.basicConfig(level=logging.INFO)
     asyncio.run(main())
