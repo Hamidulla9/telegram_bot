@@ -201,18 +201,27 @@ async def finish_order(message: types.Message, state: FSMContext):
     await state.clear()
 
 
+import re
+
 # --- ADMIN STATUSINI YANGILASH ---
 @dp.callback_query(F.data.startswith("st_"))
 async def update_payment_status(callback: types.CallbackQuery):
     status_type = callback.data.split("_")[1]
-    payment_status = "✅ To'langan" if status_type == "paid" else "🔴 To'lanmagan"
-    current_caption = callback.message.caption
 
-    if "Holati:" in current_caption:
-        base_text = current_caption.split("Holati:")[0]
-        new_caption = f"{base_text}Holati: {payment_status}"
-    else:
-        new_caption = f"{current_caption}\n\n💳 Holati: {payment_status}"
+    payment_status = (
+        "✅ To'langan"
+        if status_type == "paid"
+        else "🔴 To'lanmagan"
+    )
+
+    current_caption = callback.message.caption or ""
+
+    # Statusni almashtirish
+    new_caption = re.sub(
+        r"💳 <b>Holati:</b> .*",
+        f"💳 <b>Holati:</b> {payment_status}",
+        current_caption
+    )
 
     try:
         await callback.message.edit_caption(
@@ -220,9 +229,12 @@ async def update_payment_status(callback: types.CallbackQuery):
             parse_mode="HTML",
             reply_markup=callback.message.reply_markup
         )
-        await callback.answer(f"Holat: {payment_status}")
-    except Exception:
-        await callback.answer("Bu holat tanlangan!")
+
+        await callback.answer(f"Holat o'zgardi: {payment_status}")
+
+    except Exception as e:
+        print(e)
+        await callback.answer("Xatolik yuz berdi!")
 
 
 async def main():
