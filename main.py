@@ -24,7 +24,7 @@ def run_flask():
     app.run(host='0.0.0.0', port=port)
 
 # --- BOT SOZLAMALARI ---
-TOKEN = "8989441824:AAFieZm6Lpq3q3RG5mlBxEitwitfb7KQ094"
+TOKEN = "8989441824:AAEPUJd6Mww5lr4ICP56P73rOosY_wrjNec"
 MY_ID = 8830345316
 
 PRICES = {
